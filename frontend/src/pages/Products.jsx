@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { Package, Search, Filter, Plus, Edit, Trash2, X, Save, TrendingUp, Info, ArrowUpRight, Clock } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const Products = () => {
     const [products, setProducts] = useState([]);
@@ -20,7 +20,6 @@ const Products = () => {
         unit: 'pcs'
     });
 
-    // Forecast State
     const [isForecastModalOpen, setIsForecastModalOpen] = useState(false);
     const [forecastData, setForecastData] = useState([]);
     const [forecastLoading, setForecastLoading] = useState(false);
@@ -81,9 +80,7 @@ const Products = () => {
     const handleDelete = async (id) => {
         if (window.confirm('Are you sure you want to delete this product?')) {
             try {
-                const token = localStorage.getItem('token');
-                const headers = token ? { Authorization: `Bearer ${token}` } : {};
-                await axios.delete(`/api/v1/products/${id}`, { headers });
+                await api.delete(`/api/v1/products/${id}`);
                 fetchProducts();
             } catch (error) {
                 console.error("Error deleting product:", error);
@@ -95,9 +92,6 @@ const Products = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
             const payload = {
                 ...formData,
                 unit_price: parseFloat(formData.unit_price),
@@ -107,9 +101,9 @@ const Products = () => {
             };
 
             if (currentProduct) {
-                await axios.put(`/api/v1/products/${currentProduct.id}`, payload, { headers });
+                await api.put(`/api/v1/products/${currentProduct.id}`, payload);
             } else {
-                await axios.post('/api/v1/products', payload, { headers });
+                await api.post('/api/v1/products', payload);
             }
 
             setIsModalOpen(false);
@@ -125,14 +119,10 @@ const Products = () => {
         setIsForecastModalOpen(true);
         setForecastLoading(true);
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-            // Post to forecast endpoint
-            const res = await axios.post('/api/v1/predictions/forecast', {
+            const res = await api.post('/api/v1/predictions/forecast', {
                 product_id: product.id,
                 horizon_days: 30
-            }, { headers });
-
+            });
             setForecastData(res.data);
         } catch (error) {
             console.error("Error fetching forecast:", error);
@@ -235,19 +225,11 @@ const Products = () => {
                                     </td>
                                 </tr>
                             ))}
-                            {filteredProducts.length === 0 && (
-                                <tr>
-                                    <td colSpan="7" className="px-6 py-4 text-center text-muted-foreground">
-                                        No products found.
-                                    </td>
-                                </tr>
-                            )}
                         </tbody>
                     </table>
                 </div>
             </div>
 
-            {/* Edit/Add Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-card text-card-foreground rounded-lg shadow-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto border">
@@ -309,7 +291,6 @@ const Products = () => {
                 </div>
             )}
 
-            {/* Product Detail Modal */}
             {isDetailModalOpen && selectedProductDetail && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-card text-card-foreground rounded-xl shadow-2xl w-full max-w-4xl p-8 border max-h-[90vh] overflow-y-auto relative animate-in fade-in zoom-in duration-200">
@@ -327,7 +308,6 @@ const Products = () => {
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                            {/* Left Column: Basic Info & AI Insights */}
                             <div className="space-y-8">
                                 <div className="bg-muted/30 p-6 rounded-xl border border-border/50">
                                     <h3 className="text-xl font-bold mb-5 flex items-center">
@@ -336,9 +316,7 @@ const Products = () => {
                                     {selectedProductDetail.ai_insights ? (
                                         <div className="grid grid-cols-2 gap-6">
                                             <div className="space-y-1">
-                                                <div className="text-sm text-muted-foreground flex items-center">
-                                                    EOQ <Info className="h-3 w-3 ml-1 cursor-help" title="Economic Order Quantity: Most cost-effective amount to order" />
-                                                </div>
+                                                <div className="text-sm text-muted-foreground">EOQ</div>
                                                 <div className="text-2xl font-black text-primary">{selectedProductDetail.ai_insights.eoq}</div>
                                             </div>
                                             <div className="space-y-1">
@@ -365,90 +343,6 @@ const Products = () => {
                                     ) : (
                                         <p className="text-muted-foreground italic py-4">Generating AI optimization data...</p>
                                     )}
-                                </div>
-
-                                <div className="bg-muted/20 p-6 rounded-xl border border-border/30">
-                                    <h3 className="text-xl font-bold mb-4 flex items-center">
-                                        <Package className="mr-3 h-6 w-6 text-primary" /> Inventory Status
-                                    </h3>
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between items-center bg-background/50 p-3 rounded-lg">
-                                            <span className="text-muted-foreground">Current Stock Level</span>
-                                            <span className="font-bold text-xl">{selectedProductDetail.current_stock} units</span>
-                                        </div>
-                                        <div className="flex justify-between items-center bg-background/50 p-3 rounded-lg">
-                                            <span className="text-muted-foreground">Average Profit Margin</span>
-                                            <span className="font-bold text-xl text-green-600">{selectedProductDetail.profit_margin}%</span>
-                                        </div>
-                                        <div className="flex justify-between items-center bg-background/50 p-3 rounded-lg">
-                                            <span className="text-muted-foreground">Supplier</span>
-                                            <span className="font-bold text-lg">{selectedProductDetail.supplier_name || 'Generic'}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Right Column: Pending Orders & Forecast */}
-                            <div className="space-y-8">
-                                <div className="bg-blue-500/5 p-6 rounded-xl border border-blue-500/20">
-                                    <h3 className="text-xl font-bold mb-5 flex items-center">
-                                        <Clock className="mr-3 h-6 w-6 text-blue-500" /> Pending Inbound Orders
-                                    </h3>
-                                    <div className="space-y-3">
-                                        {selectedProductDetail.pending_orders && selectedProductDetail.pending_orders.length > 0 ? (
-                                            selectedProductDetail.pending_orders.map(order => (
-                                                <div key={order.order_id} className="flex justify-between items-center p-4 bg-background rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow">
-                                                    <div>
-                                                        <div className="font-bold text-blue-600">{order.order_number}</div>
-                                                        <div className="text-sm text-muted-foreground">{order.quantity} {selectedProductDetail.unit} ordered</div>
-                                                    </div>
-                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${order.status === 'draft' ? 'bg-orange-100 text-orange-800' :
-                                                        order.status === 'shipped' ? 'bg-blue-100 text-blue-800' :
-                                                            'bg-gray-100 text-gray-800'
-                                                        }`}>
-                                                        {order.status}
-                                                    </span>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="text-center py-10 border-2 border-dashed border-border/50 rounded-xl">
-                                                <p className="text-muted-foreground">No pending orders found</p>
-                                                <button
-                                                    onClick={() => {
-                                                        setIsDetailModalOpen(false);
-                                                        // Navigate or open restock logic?
-                                                    }}
-                                                    className="mt-3 text-sm font-bold text-primary hover:underline hover:text-primary/80"
-                                                >
-                                                    Generate Restock Order →
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                    <h3 className="text-xl font-bold flex items-center">
-                                        <TrendingUp className="mr-3 h-6 w-6 text-primary" /> Demand Projection
-                                    </h3>
-                                    <div className="h-48 w-full bg-muted/10 rounded-xl border border-dashed flex items-center justify-center p-4">
-                                        {selectedProductDetail.demand_forecast && selectedProductDetail.demand_forecast.length > 0 ? (
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <LineChart data={selectedProductDetail.demand_forecast}>
-                                                    <Line type="monotone" dataKey="predicted_demand" stroke="#8884d8" strokeWidth={3} dot={false} />
-                                                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
-                                                </LineChart>
-                                            </ResponsiveContainer>
-                                        ) : (
-                                            <p className="text-muted-foreground">Forecast data visualization</p>
-                                        )}
-                                    </div>
-                                    <button
-                                        onClick={() => openForecastModal(selectedProductDetail)}
-                                        className="w-full py-4 bg-primary/10 hover:bg-primary/20 text-primary font-bold rounded-xl transition-all flex items-center justify-center group"
-                                    >
-                                        Open Full AI Analysis <ArrowUpRight className="ml-2 h-5 w-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-                                    </button>
                                 </div>
                             </div>
                         </div>
