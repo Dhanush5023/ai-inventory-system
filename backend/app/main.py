@@ -5,6 +5,15 @@ from contextlib import asynccontextmanager
 from .core.config import settings
 from .models.database import init_db
 from .api.v1 import api_router
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @asynccontextmanager

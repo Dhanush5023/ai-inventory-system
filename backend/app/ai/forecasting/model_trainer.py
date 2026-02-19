@@ -9,7 +9,6 @@ from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-import xgboost as xgb
 from statsmodels.tsa.arima.model import ARIMA
 from prophet import Prophet
 try:
@@ -26,6 +25,18 @@ from datetime import datetime, timedelta
 from typing import Tuple, Dict, Any
 import warnings
 warnings.filterwarnings('ignore')
+from sklearn.ensemble import RandomForestRegressor
+
+class DemandPredictor:
+    def __init__(self):
+        self.model = RandomForestRegressor(n_estimators=100)
+
+    def train(self, X, y):
+        self.model.fit(X, y)
+
+    def predict(self, X):
+        return self.model.predict(X)
+
 
 
 class DemandPredictor:
