@@ -5,15 +5,6 @@ from contextlib import asynccontextmanager
 from .core.config import settings
 from .models.database import init_db
 from .api.v1 import api_router
-from fastapi.middleware.cors import CORSMiddleware
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 @asynccontextmanager
@@ -32,7 +23,7 @@ async def lifespan(app: FastAPI):
     print("[INFO] Shutting down...")
 
 
-# Create FastAPI application
+# ✅ Create FastAPI application FIRST
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
@@ -42,16 +33,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS
+
+# ✅ Configure CORS (only once)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.CORS_ORIGINS or ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include API routes
+
+# ✅ Include API routes
 app.include_router(api_router, prefix="/api/v1")
 
 
@@ -80,7 +73,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "app.main:app",
+        "backend.app.main:app",
         host="0.0.0.0",
         port=8000,
         reload=settings.DEBUG,
