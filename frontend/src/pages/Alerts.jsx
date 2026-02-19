@@ -23,9 +23,7 @@ const Alerts = () => {
 
     const handleResolve = async (id) => {
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-            await axios.put(`/api/v1/alerts/${id}`, { is_resolved: true }, { headers });
+            await api.put(`/api/v1/alerts/${id}`, { is_resolved: true });
             fetchAlerts();
         } catch (error) {
             console.error("Error resolving alert:", error);
