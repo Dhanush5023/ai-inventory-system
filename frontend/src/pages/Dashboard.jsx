@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, BarChart, Bar } from 'recharts';
 import { Zap, TrendingUp, AlertTriangle, Download, FileText, Sparkles, ShieldCheck } from 'lucide-react';
 
@@ -56,9 +56,7 @@ const Dashboard = () => {
                 <div className="flex gap-4">
                     <button
                         onClick={async () => {
-                            const token = localStorage.getItem('token');
-                            const response = await axios.get('/api/v1/analytics/export', {
-                                headers: { Authorization: `Bearer ${token}` },
+                            const response = await api.get('/api/v1/analytics/export', {
                                 responseType: 'blob'
                             });
                             const url = window.URL.createObjectURL(new Blob([response.data]));

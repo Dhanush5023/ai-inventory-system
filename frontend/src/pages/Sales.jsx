@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import { ShoppingCart, Search, Plus, X, Trash2, CreditCard, RefreshCw, AlertCircle } from 'lucide-react';
 
 const Sales = () => {
@@ -38,9 +38,7 @@ const Sales = () => {
     const fetchSales = useCallback(async () => {
         setRefreshing(true);
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-            const response = await axios.get('/api/v1/sales', { headers });
+            const response = await api.get('/api/v1/sales');
 
             const salesList = response.data?.sales;
             setSales(Array.isArray(salesList) ? salesList : []);

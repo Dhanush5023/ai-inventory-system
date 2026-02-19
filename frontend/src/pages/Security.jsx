@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import { ShieldAlert, Fingerprint, Eye, RefreshCw, AlertCircle, CheckCircle, Camera, Upload, Trash2 } from 'lucide-react';
 
 const Security = () => {
@@ -11,9 +11,7 @@ const Security = () => {
     const fetchAnomalies = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-            const response = await axios.get('/api/v1/ai/perception/anomalies/sales', { headers });
+            const response = await api.get('/api/v1/ai/perception/anomalies/sales');
             setAnomalies(response.data.anomalies || []);
         } catch (error) {
             console.error("Error fetching anomalies:", error);

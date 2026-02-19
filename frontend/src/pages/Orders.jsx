@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import {
     ClipboardList, Search, CheckCircle, Truck, PackageCheck,
     XCircle, Trash2, RefreshCw, AlertCircle, Calendar, User,
@@ -22,10 +22,7 @@ const Orders = () => {
     const fetchOrders = useCallback(async () => {
         setRefreshing(true);
         try {
-            const token = localStorage.getItem('token');
-            const response = await axios.get(`/api/v1/orders?limit=100${statusFilter ? `&status=${statusFilter}` : ''}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await api.get(`/api/v1/orders?limit=100${statusFilter ? `&status=${statusFilter}` : ''}`);
             setOrders(response.data.orders);
             setError(null);
         } catch (err) {

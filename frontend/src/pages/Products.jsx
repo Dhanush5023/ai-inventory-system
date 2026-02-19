@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import { Package, Search, Filter, Plus, Edit, Trash2, X, Save, TrendingUp, Info, ArrowUpRight, Clock } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -30,9 +30,7 @@ const Products = () => {
 
     const fetchProducts = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-            const response = await axios.get('/api/v1/products', { headers });
+            const response = await api.get('/api/v1/products');
             setProducts(response.data.products || []);
         } catch (error) {
             console.error("Error fetching products:", error);
@@ -405,8 +403,8 @@ const Products = () => {
                                                         <div className="text-sm text-muted-foreground">{order.quantity} {selectedProductDetail.unit} ordered</div>
                                                     </div>
                                                     <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${order.status === 'draft' ? 'bg-orange-100 text-orange-800' :
-                                                            order.status === 'shipped' ? 'bg-blue-100 text-blue-800' :
-                                                                'bg-gray-100 text-gray-800'
+                                                        order.status === 'shipped' ? 'bg-blue-100 text-blue-800' :
+                                                            'bg-gray-100 text-gray-800'
                                                         }`}>
                                                         {order.status}
                                                     </span>

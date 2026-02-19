@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 
 const AuthContext = createContext(null);
 
@@ -12,13 +12,11 @@ export const AuthProvider = ({ children }) => {
             const token = localStorage.getItem('token');
             if (token) {
                 try {
-                    const response = await axios.get('/api/v1/auth/me', {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
+                    const response = await api.get('/api/v1/auth/me');
                     setUser(response.data);
                 } catch (error) {
                     console.error("Auth check failed:", error);
-                    localStorage.removeItem('token');
+                    // Token removal is handled by axios interceptor
                 }
             }
             setLoading(false);
@@ -28,14 +26,12 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (email, password) => {
         try {
-            const response = await axios.post('/api/v1/auth/login', { email, password });
+            const response = await api.post('/api/v1/auth/login', { email, password });
             const { access_token } = response.data;
             localStorage.setItem('token', access_token);
 
             // Fetch user details immediately
-            const userResponse = await axios.get('/api/v1/auth/me', {
-                headers: { Authorization: `Bearer ${access_token}` }
-            });
+            const userResponse = await api.get('/api/v1/auth/me');
             setUser(userResponse.data);
             return true;
         } catch (error) {
@@ -46,7 +42,7 @@ export const AuthProvider = ({ children }) => {
 
     const register = async (userData) => {
         try {
-            await axios.post('/api/v1/auth/register', userData);
+            await api.post('/api/v1/auth/register', userData);
             return true;
         } catch (error) {
             console.error("Registration failed:", error);

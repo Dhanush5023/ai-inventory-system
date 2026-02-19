@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import { MessageSquare, X, Send, Bot, User, Loader2 } from 'lucide-react';
 
 const AIAssistant = () => {
@@ -29,11 +29,7 @@ const AIAssistant = () => {
         setIsLoading(true);
 
         try {
-            const token = localStorage.getItem('token');
-            const response = await axios.post('/api/v1/ai/chatbot/query',
-                { question: input },
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
+            const response = await api.post('/api/v1/ai/chat', { message: input });
 
             setMessages(prev => [...prev, { role: 'assistant', content: response.data.answer }]);
         } catch (error) {

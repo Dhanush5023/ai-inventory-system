@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import { Truck, Star, MapPin, Phone, Mail, Plus, Edit, X, Save, Activity } from 'lucide-react';
 
 const Suppliers = () => {
@@ -40,9 +40,7 @@ const Suppliers = () => {
 
     const fetchSuppliers = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-            const response = await axios.get('/api/v1/suppliers', { headers });
+            const response = await api.get('/api/v1/suppliers');
             setSuppliers(response.data.suppliers || []);
             // Fetch risks after suppliers are loaded
             fetchRisks();
@@ -183,8 +181,8 @@ const Suppliers = () => {
                                 <div className="flex justify-between items-center">
                                     <div className="flex flex-col">
                                         <span className={`text-sm font-bold ${riskData[supplier.id].risk_level === 'High' ? 'text-red-500' :
-                                                riskData[supplier.id].risk_level === 'Medium' ? 'text-amber-500' :
-                                                    'text-emerald-500'
+                                            riskData[supplier.id].risk_level === 'Medium' ? 'text-amber-500' :
+                                                'text-emerald-500'
                                             }`}>
                                             {riskData[supplier.id].risk_level} Risk
                                         </span>
@@ -193,8 +191,8 @@ const Suppliers = () => {
                                     <div className="h-1.5 w-16 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                                         <div
                                             className={`h-full ${riskData[supplier.id].risk_level === 'High' ? 'bg-red-500' :
-                                                    riskData[supplier.id].risk_level === 'Medium' ? 'bg-amber-500' :
-                                                        'bg-emerald-500'
+                                                riskData[supplier.id].risk_level === 'Medium' ? 'bg-amber-500' :
+                                                    'bg-emerald-500'
                                                 }`}
                                             style={{ width: `${riskData[supplier.id].risk_score * 100}%` }}
                                         />

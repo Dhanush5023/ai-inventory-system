@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import { AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 
 const Alerts = () => {
@@ -8,9 +8,7 @@ const Alerts = () => {
 
     const fetchAlerts = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-            const response = await axios.get('/api/v1/alerts', { headers });
+            const response = await api.get('/api/v1/alerts');
             setAlerts(response.data.alerts || []);
         } catch (error) {
             console.error("Error fetching alerts:", error);
