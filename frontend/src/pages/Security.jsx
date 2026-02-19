@@ -33,12 +33,9 @@ const Security = () => {
         formData.append('file', file);
 
         try {
-            const token = localStorage.getItem('token');
-            const headers = {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'multipart/form-data'
-            };
-            const response = await axios.post('/api/v1/ai/perception/vision/count-stock', formData, { headers });
+            const response = await api.post('/api/v1/ai/perception/vision/count-stock', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
             setVisionResult(response.data);
         } catch (error) {
             console.error("Vision AI failed:", error);
