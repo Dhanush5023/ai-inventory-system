@@ -10,7 +10,6 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from statsmodels.tsa.arima.model import ARIMA
-from prophet import Prophet
 try:
     import tensorflow as tf
     import tf_keras as keras
@@ -26,6 +25,23 @@ from typing import Tuple, Dict, Any
 import warnings
 warnings.filterwarnings('ignore')
 from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+
+
+class DemandPredictor:
+    def __init__(self):
+        self.model = RandomForestRegressor(n_estimators=100)
+
+    def train(self, X, y):
+        X = np.array(X)
+        y = np.array(y)
+        self.model.fit(X, y)
+
+    def predict(self, X):
+        X = np.array(X)
+        return self.model.predict(X)
+
 
 class DemandPredictor:
     def __init__(self):
