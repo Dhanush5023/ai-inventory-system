@@ -21,10 +21,7 @@ const Suppliers = () => {
 
     const fetchRisks = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-            const response = await axios.get('/api/v1/ai/autonomous/risk/suppliers', { headers });
-
+            const response = await api.get('/api/v1/ai/autonomous/risk/suppliers');
             // Transform array to map for easy lookup
             const riskMap = {};
             if (response.data.risks) {
@@ -42,7 +39,6 @@ const Suppliers = () => {
         try {
             const response = await api.get('/api/v1/suppliers');
             setSuppliers(response.data.suppliers || []);
-            // Fetch risks after suppliers are loaded
             fetchRisks();
         } catch (error) {
             console.error("Error fetching suppliers:", error);
@@ -93,18 +89,15 @@ const Suppliers = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
             const payload = {
                 ...formData,
                 rating: parseFloat(formData.rating)
             };
 
             if (currentSupplier) {
-                await axios.put(`/api/v1/suppliers/${currentSupplier.id}`, payload, { headers });
+                await api.put(`/api/v1/suppliers/${currentSupplier.id}`, payload);
             } else {
-                await axios.post('/api/v1/suppliers', payload, { headers });
+                await api.post('/api/v1/suppliers', payload);
             }
 
             setIsModalOpen(false);
@@ -172,7 +165,6 @@ const Suppliers = () => {
                             <span>Orders: {supplier.total_orders || 0}</span>
                         </div>
 
-                        {/* AI Risk Section */}
                         <div className="mt-4 bg-slate-100 dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
                             <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
                                 <Activity className="w-3 h-3" /> AI Risk Profile
@@ -207,15 +199,8 @@ const Suppliers = () => {
                         </div>
                     </div>
                 ))}
-
-                {suppliers.length === 0 && (
-                    <div className="col-span-full text-center py-12 text-muted-foreground">
-                        No suppliers found.
-                    </div>
-                )}
             </div>
 
-            {/* Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-card text-card-foreground rounded-lg shadow-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto border">

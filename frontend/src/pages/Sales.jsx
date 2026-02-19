@@ -17,20 +17,14 @@ const Sales = () => {
     const [recommendations, setRecommendations] = useState([]);
     const [loadingRecs, setLoadingRecs] = useState(false);
 
-    // Initial Fetch & Search
     const fetchProducts = useCallback(async (search = '') => {
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
             const safeSearch = encodeURIComponent(search);
-            const response = await axios.get(`/api/v1/products?limit=100&query=${safeSearch}`, { headers });
-
-            // Ensure products is always an array
+            const response = await api.get(`/api/v1/products?limit=100&query=${safeSearch}`);
             const productsList = response.data?.products;
             setProducts(Array.isArray(productsList) ? productsList : []);
         } catch (error) {
             console.error("Error fetching products:", error);
-            // Don't crash, just show empty
             setProducts([]);
         }
     }, []);
@@ -39,7 +33,6 @@ const Sales = () => {
         setRefreshing(true);
         try {
             const response = await api.get('/api/v1/sales');
-
             const salesList = response.data?.sales;
             setSales(Array.isArray(salesList) ? salesList : []);
             setError(null);
@@ -51,7 +44,6 @@ const Sales = () => {
         }
     }, []);
 
-    // Initial Load & Polling
     useEffect(() => {
         const loadData = async () => {
             setLoading(true);
@@ -59,13 +51,10 @@ const Sales = () => {
             setLoading(false);
         };
         loadData();
-
-        // Add 30s polling for transactions as a fallback
         const pollTimer = setInterval(fetchSales, 30000);
         return () => clearInterval(pollTimer);
     }, [fetchSales, fetchProducts]);
 
-    // Debounced Search
     useEffect(() => {
         const timer = setTimeout(() => {
             fetchProducts(searchTerm);
@@ -73,20 +62,13 @@ const Sales = () => {
         return () => clearTimeout(timer);
     }, [searchTerm, fetchProducts]);
 
-    // Fetch Recommendations when cart changes (debounced)
     useEffect(() => {
         const fetchRecs = async () => {
-            if (processing) return; // Don't fetch while checking out
+            if (processing) return;
             setLoadingRecs(true);
             try {
-                const token = localStorage.getItem('token');
-                const headers = token ? { Authorization: `Bearer ${token}` } : {};
                 const cartIds = cart.map(item => item.product_id);
-
-                const response = await axios.post('/api/v1/analytics/recommendations',
-                    { cart_product_ids: cartIds },
-                    { headers }
-                );
+                const response = await api.post('/api/v1/analytics/recommendations', { cart_product_ids: cartIds });
                 setRecommendations(response.data || []);
             } catch (error) {
                 console.error("Error fetching recommendations:", error);
@@ -95,11 +77,10 @@ const Sales = () => {
             }
         };
 
-        const timer = setTimeout(fetchRecs, 1000); // 1s debounce to avoid spamming while typing qty
+        const timer = setTimeout(fetchRecs, 1000);
         return () => clearTimeout(timer);
     }, [cart, processing]);
 
-    // Cart Logic
     const addToCart = (product) => {
         if (!product || product.current_stock <= 0) {
             alert("Out of stock!");
@@ -135,15 +116,12 @@ const Sales = () => {
 
     const updateQuantity = (productId, newQty) => {
         if (newQty < 1) return;
-
         const product = products.find(p => p.id === productId);
         if (!product) return;
-
         if (newQty > product.current_stock) {
             alert(`Only ${product.current_stock} available!`);
             return;
         }
-
         setCart(prev => prev.map(item =>
             item.product_id === productId
                 ? { ...item, quantity: newQty, total: newQty * item.unit_price }
@@ -152,16 +130,12 @@ const Sales = () => {
     };
 
     const clearCart = () => setCart([]);
-
     const cartTotal = cart.reduce((sum, item) => sum + (item.total || 0), 0);
 
     const handleCheckout = async () => {
         if (cart.length === 0) return;
         setProcessing(true);
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
             const payload = {
                 items: cart.map(item => ({
                     product_id: item.product_id,
@@ -170,14 +144,10 @@ const Sales = () => {
                     notes: "POS Transaction"
                 }))
             };
-
-            await axios.post('/api/v1/sales/bulk', payload, { headers });
-
-            // Small delay to ensure DB transaction is fully finalized before refetching
+            await api.post('/api/v1/sales/bulk', payload);
             setTimeout(async () => {
                 await Promise.all([fetchSales(), fetchProducts(searchTerm)]);
             }, 500);
-
             alert("Transaction Complete!");
             setCart([]);
         } catch (error) {
@@ -197,7 +167,6 @@ const Sales = () => {
 
     return (
         <div className="flex h-[calc(100vh-64px)] overflow-hidden">
-            {/* Left: Product Catalog */}
             <div className="w-2/3 p-6 flex flex-col border-r bg-gray-50/50 dark:bg-gray-900/50">
                 <div className="mb-6 flex justify-between items-center">
                     <h1 className="text-2xl font-bold flex items-center">
@@ -215,7 +184,6 @@ const Sales = () => {
                     </div>
                 </div>
 
-                {/* AI Recommendations Section */}
                 {recommendations.length > 0 && (
                     <div className="mb-4 bg-indigo-50 dark:bg-indigo-900/10 p-4 rounded-xl border border-indigo-100 dark:border-indigo-500/20">
                         <h3 className="text-sm font-bold text-indigo-800 dark:text-indigo-300 mb-3 flex items-center">
@@ -244,7 +212,6 @@ const Sales = () => {
                     </div>
                 )}
 
-                {/* Product Grid - flex-1 to take available space */}
                 <div className="grid grid-cols-3 gap-4 overflow-y-auto content-start pr-2 pb-4 flex-1 min-h-0">
                     {products.map(product => (
                         <button
@@ -276,7 +243,6 @@ const Sales = () => {
                     )}
                 </div>
 
-                {/* Sales History at Bottom - Fixed height */}
                 <div className="mt-6 flex-none h-64 flex flex-col min-h-0 border-t pt-4">
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold flex items-center">
@@ -285,10 +251,7 @@ const Sales = () => {
                         <div className="flex items-center gap-4">
                             {error && <span className="text-sm text-red-500 flex items-center"><AlertCircle className="w-4 h-4 mr-1" /> {error}</span>}
                             <button
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    fetchSales();
-                                }}
+                                onClick={fetchSales}
                                 disabled={refreshing}
                                 className="p-1.5 hover:bg-muted rounded-full transition-colors text-muted-foreground disabled:opacity-50 border shadow-sm"
                                 title="Refresh History"
@@ -333,7 +296,6 @@ const Sales = () => {
                 </div>
             </div>
 
-            {/* Right: Cart */}
             <div className="w-1/3 bg-card border-l flex flex-col p-6 shadow-xl z-10">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-bold flex items-center">
