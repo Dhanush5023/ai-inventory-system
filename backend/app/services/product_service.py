@@ -1,11 +1,6 @@
-"""
-Product Service Layer
-Business logic for product management
-"""
-
+from flask import abort
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from fastapi import HTTPException, status
 from typing import List, Optional
 from datetime import datetime
 
@@ -30,18 +25,12 @@ class ProductService:
                 Supplier.id == product_data.supplier_id
             ).first()
             if not supplier:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Supplier not found"
-                )
+                abort(404, description="Supplier not found")
         
         # Check for duplicate SKU
         existing = db.query(Product).filter(Product.sku == product_data.sku).first()
         if existing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Product with SKU '{product_data.sku}' already exists"
-            )
+            abort(400, description=f"Product with SKU '{product_data.sku}' already exists")
         
         # Create product
         new_product = Product(**product_data.model_dump())
@@ -53,20 +42,14 @@ class ProductService:
             return new_product
         except IntegrityError as e:
             db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to create product. Check for duplicate values."
-            )
+            abort(400, description="Failed to create product. Check for duplicate values.")
     
     @staticmethod
     def get_product(db: Session, product_id: int) -> Product:
         """Get product by ID"""
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Product not found"
-            )
+            abort(404, description="Product not found")
         return product
     
     @staticmethod
@@ -129,10 +112,7 @@ class ProductService:
                 Product.sku == update_data['sku']
             ).first()
             if existing:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Product with SKU '{update_data['sku']}' already exists"
-                )
+                abort(400, description=f"Product with SKU '{update_data['sku']}' already exists")
         
         # Verify supplier if being updated
         if 'supplier_id' in update_data and update_data['supplier_id']:
@@ -140,10 +120,7 @@ class ProductService:
                 Supplier.id == update_data['supplier_id']
             ).first()
             if not supplier:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Supplier not found"
-                )
+                abort(404, description="Supplier not found")
         
         # Apply updates
         for field, value in update_data.items():
@@ -157,10 +134,7 @@ class ProductService:
             return product
         except IntegrityError:
             db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to update product"
-            )
+            abort(400, description="Failed to update product")
     
     @staticmethod
     def delete_product(db: Session, product_id: int) -> dict:
@@ -173,10 +147,7 @@ class ProductService:
             return {"message": f"Product '{product.name}' deleted successfully"}
         except Exception as e:
             db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to delete product. It may have related records."
-            )
+            abort(400, description="Failed to delete product. It may have related records.")
     
     @staticmethod
     def adjust_stock(db: Session, product_id: int, quantity_change: int,
@@ -192,10 +163,7 @@ class ProductService:
         new_stock = product.current_stock + quantity_change
         
         if new_stock < 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Insufficient stock. Current: {product.current_stock}, Requested: {abs(quantity_change)}"
-            )
+            abort(400, description=f"Insufficient stock. Current: {product.current_stock}, Requested: {abs(quantity_change)}")
         
         product.current_stock = new_stock
         product.updated_at = datetime.utcnow()
@@ -219,8 +187,8 @@ class ProductService:
         ).limit(limit).all()
     
     @staticmethod
-    def enrich_product_response(product: Product, db: Session) -> dict:
-        """Add computed fields to product response"""
+    def enrich_product_response(product: Product, db: Session, include_ai: bool = False, include_forecast: bool = False) -> dict:
+        """Add computed fields to product response (Optimized)"""
         # Calculate status
         if product.current_stock == 0:
             status = "out_of_stock"
@@ -254,18 +222,22 @@ class ProductService:
         except:
             pass
             
-        # Get AI Insights
-        try:
-            ai_insights = optimization_engine.optimize_product(db, product.id)
-        except:
-            ai_insights = None
+        # Get AI Insights (Conditional for performance)
+        ai_insights = None
+        if include_ai:
+            try:
+                ai_insights = optimization_engine.optimize_product(db, product.id)
+            except:
+                pass
             
-        # Get Demand Forecast
-        try:
-            pred_service = PredictionService()
-            forecast = pred_service.get_product_forecast(db, product.id, days_ahead=7)
-        except:
-            forecast = None
+        # Get Demand Forecast (Conditional for performance)
+        forecast = None
+        if include_forecast:
+            try:
+                pred_service = PredictionService()
+                forecast = pred_service.get_product_forecast(db, product.id, days_ahead=7)
+            except:
+                pass
             
         return {
             "id": product.id,

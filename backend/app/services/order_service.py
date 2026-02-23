@@ -1,6 +1,6 @@
+from flask import abort
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from fastapi import HTTPException, status
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta
 
@@ -27,10 +27,7 @@ class OrderService:
         # Verify supplier exists
         supplier = db.query(Supplier).filter(Supplier.id == order_data.supplier_id).first()
         if not supplier:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Supplier not found"
-            )
+            abort(404, description="Supplier not found")
 
         # Generate unique order number
         order_number = OrderService.generate_order_number()
@@ -54,10 +51,7 @@ class OrderService:
             product = db.query(Product).filter(Product.id == item_data.product_id).first()
             if not product:
                 db.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Product ID {item_data.product_id} not found"
-                )
+                abort(404, description=f"Product ID {item_data.product_id} not found")
 
             total_price = item_data.quantity * item_data.unit_price
             total_amount += total_price
@@ -82,10 +76,7 @@ class OrderService:
         """Get order by ID"""
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Order not found"
-            )
+            abort(404, description="Order not found")
         return order
 
     @staticmethod
@@ -124,10 +115,7 @@ class OrderService:
 
         # Prevent updates to received or cancelled orders
         if order.status in ["received", "cancelled"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot update order with status '{order.status}'"
-            )
+            abort(400, description=f"Cannot update order with status '{order.status}'")
 
         # Update fields
         update_data = order_data.model_dump(exclude_unset=True)
@@ -154,10 +142,7 @@ class OrderService:
         }
 
         if new_status not in valid_transitions.get(order.status, []):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot transition from '{order.status}' to '{new_status}'"
-            )
+            abort(400, description=f"Cannot transition from '{order.status}' to '{new_status}'")
 
         order.status = new_status
 
@@ -175,10 +160,7 @@ class OrderService:
         order = OrderService.get_order(db, order_id)
 
         if order.status != "shipped":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only shipped orders can be received"
-            )
+            abort(400, description="Only shipped orders can be received")
 
         # Process received items
         for item in receive_data.items:
@@ -189,16 +171,10 @@ class OrderService:
             ).first()
 
             if not order_item:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Order item {item.order_item_id} not found"
-                )
+                abort(404, description=f"Order item {item.order_item_id} not found")
 
             if item.received_quantity > order_item.quantity:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Received quantity cannot exceed ordered quantity for item {item.order_item_id}"
-                )
+                abort(400, description=f"Received quantity cannot exceed ordered quantity for item {item.order_item_id}")
 
             # Update product stock
             product = db.query(Product).filter(Product.id == order_item.product_id).first()
@@ -221,10 +197,7 @@ class OrderService:
         order = OrderService.get_order(db, order_id)
 
         if order.status != "pending":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only pending orders can be deleted"
-            )
+            abort(400, description="Only pending orders can be deleted")
 
         db.delete(order)
         db.commit()

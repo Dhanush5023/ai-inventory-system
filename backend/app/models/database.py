@@ -5,7 +5,6 @@ from datetime import datetime
 from ..core.config import settings
 
 # Database engine
-# Database engine
 connect_args = {}
 if settings.DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
@@ -15,12 +14,18 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
+from flask import g
+
 def get_db():
-    """Database session dependency"""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
+    """Database session utility"""
+    if 'db' not in g:
+        g.db = SessionLocal()
+    return g.db
+
+def close_db(e=None):
+    """Close database session"""
+    db = g.pop('db', None)
+    if db is not None:
         db.close()
 
 
@@ -60,7 +65,7 @@ class Product(Base):
     minimum_stock = Column(Integer, default=10)
     maximum_stock = Column(Integer, default=1000)
     unit = Column(String(50), default="pcs")
-    supplier_id = Column(Integer, ForeignKey("suppliers.id"))
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -77,8 +82,8 @@ class Sale(Base):
     __tablename__ = "sales"
     
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Float, nullable=False)
     total_amount = Column(Float, nullable=False)
@@ -117,8 +122,8 @@ class Order(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     order_number = Column(String(100), unique=True, nullable=False, index=True)
-    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     status = Column(String(50), default="pending", index=True) # pending, approved, shipped, received, cancelled
     total_amount = Column(Float, default=0.0)
     order_date = Column(DateTime, default=datetime.utcnow)
@@ -137,8 +142,8 @@ class OrderItem(Base):
     __tablename__ = "order_items"
     
     id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Float, nullable=False)
     total_price = Column(Float, nullable=False)
@@ -153,7 +158,7 @@ class Prediction(Base):
     __tablename__ = "predictions"
     
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     prediction_date = Column(DateTime, default=datetime.utcnow, index=True)
     target_date = Column(DateTime, nullable=False, index=True)
     predicted_demand = Column(Float, nullable=False)
@@ -170,7 +175,7 @@ class Alert(Base):
     __tablename__ = "alerts"
     
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     alert_type = Column(String(50), nullable=False) # low_stock, restock_needed, out_of_stock
     message = Column(Text, nullable=False)
     severity = Column(String(20), default="medium") # low, medium, high, critical

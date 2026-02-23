@@ -1,7 +1,5 @@
-from fastapi import APIRouter, Depends, Query, status, HTTPException
-from sqlalchemy.orm import Session
+from flask import Blueprint, request, jsonify
 from typing import Optional, List
-
 from ...models.database import get_db
 from ...schemas.products import (
     ProductCreate,
@@ -11,26 +9,28 @@ from ...schemas.products import (
     StockAdjustment,
 )
 from ...services.product_service import ProductService
-from ...core.security import get_current_user_id
+from ...core.security import login_required
 from ...core.config import settings
 
-router = APIRouter()
+bp = Blueprint("products", __name__)
 
 
-@router.get("", response_model=ProductListResponse)
-def get_products(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=settings.MAX_PAGE_SIZE),
-    query: Optional[str] = None,
-    category: Optional[str] = None,
-    min_price: Optional[float] = None, # Not yet supported in service but keeping for API consistecy
-    max_price: Optional[float] = None, 
-    in_stock_only: bool = False, # Not yet supported
-    low_stock_only: bool = False,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("", methods=["GET"])
+@login_required
+def get_products():
     """Get products with filtering and pagination"""
+    db = get_db()
+    
+    # Extract query parameters
+    try:
+        skip = int(request.args.get("skip", 0))
+        limit = int(request.args.get("limit", 20))
+        query = request.args.get("query")
+        category = request.args.get("category")
+        low_stock_only = request.args.get("low_stock_only", "false").lower() == "true"
+    except ValueError:
+        return jsonify({"detail": "Invalid query parameters"}), 400
+
     products, total = ProductService.get_products(
         db, 
         skip=skip, 
@@ -40,84 +40,102 @@ def get_products(
         low_stock_only=low_stock_only
     )
 
-    # Enrich products with computed fields
+    # Enrich products with computed fields (Optimized: No AI in list)
     enriched_products = [
-        ProductService.enrich_product_response(product, db) for product in products
+        ProductService.enrich_product_response(product, db, include_ai=False, include_forecast=False) 
+        for product in products
     ]
 
     page = (skip // limit) + 1
-    return ProductListResponse(
+    response_data = ProductListResponse(
         products=enriched_products,
         total=total,
         page=page,
         page_size=limit
     )
+    return jsonify(response_data.model_dump())
 
 
-@router.get("/categories", response_model=List[str])
-def get_categories(
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/categories", methods=["GET"])
+@login_required
+def get_categories():
     """Get all product categories"""
-    return ProductService.get_categories(db)
+    db = get_db()
+    return jsonify(ProductService.get_categories(db))
 
 
-@router.get("/{product_id}", response_model=ProductResponse)
-def get_product(
-    product_id: int,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/<int:product_id>", methods=["GET"])
+@login_required
+def get_product(product_id: int):
     """Get product by ID"""
+    db = get_db()
     product = ProductService.get_product(db, product_id)
-    return ProductService.enrich_product_response(product, db)
+    if not product:
+        return jsonify({"detail": "Product not found"}), 404
+    enriched = ProductService.enrich_product_response(product, db, include_ai=True, include_forecast=True)
+    return jsonify(ProductResponse.model_validate(enriched).model_dump())
 
 
-@router.post("", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
-def create_product(
-    product_data: ProductCreate,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("", methods=["POST"])
+@login_required
+def create_product():
     """Create a new product"""
+    db = get_db()
+    try:
+        product_data = ProductCreate(**request.json)
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 400
+        
     product = ProductService.create_product(db, product_data)
-    return ProductService.enrich_product_response(product, db)
+    enriched = ProductService.enrich_product_response(product, db, include_ai=True, include_forecast=True)
+    return jsonify(ProductResponse.model_validate(enriched).model_dump()), 201
 
 
-@router.put("/{product_id}", response_model=ProductResponse)
-def update_product(
-    product_id: int,
-    product_data: ProductUpdate,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/<int:product_id>", methods=["PUT"])
+@login_required
+def update_product(product_id: int):
     """Update product"""
+    db = get_db()
+    try:
+        product_data = ProductUpdate(**request.json)
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 400
+        
     product = ProductService.update_product(db, product_id, product_data)
-    return ProductService.enrich_product_response(product, db)
+    if not product:
+        return jsonify({"detail": "Product not found"}), 404
+        
+    enriched = ProductService.enrich_product_response(product, db, include_ai=True, include_forecast=True)
+    return jsonify(ProductResponse.model_validate(enriched).model_dump())
 
 
-@router.delete("/{product_id}")
-def delete_product(
-    product_id: int,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/<int:product_id>", methods=["DELETE"])
+@login_required
+def delete_product(product_id: int):
     """Delete product"""
-    return ProductService.delete_product(db, product_id)
+    db = get_db()
+    result = ProductService.delete_product(db, product_id)
+    return jsonify(result)
 
 
-@router.post("/stock/adjust", response_model=ProductResponse)
-def adjust_stock(
-    adjustment: StockAdjustment,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/stock/adjust", methods=["POST"])
+@login_required
+def adjust_stock():
     """Adjust product stock"""
+    db = get_db()
+    try:
+        adjustment_data = StockAdjustment(**request.json)
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 400
+        
     product = ProductService.adjust_stock(
         db, 
-        adjustment.product_id, 
-        adjustment.quantity, 
-        adjustment.reason
+        adjustment_data.product_id, 
+        adjustment_data.quantity, 
+        adjustment_data.reason
     )
-    return ProductService.enrich_product_response(product, db)
+    if not product:
+        return jsonify({"detail": "Product not found"}), 404
+        
+    enriched = ProductService.enrich_product_response(product, db, include_ai=False, include_forecast=False)
+    return jsonify(ProductResponse.model_validate(enriched).model_dump())

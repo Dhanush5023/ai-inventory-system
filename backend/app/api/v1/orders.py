@@ -1,8 +1,6 @@
-from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.orm import Session
+from flask import Blueprint, request, jsonify
 from typing import Optional
 from datetime import datetime
-
 from ...models.database import get_db
 from ...schemas.orders import (
     OrderCreate,
@@ -15,24 +13,66 @@ from ...schemas.orders import (
     OrderItemResponse,
 )
 from ...services.order_service import OrderService
-from ...core.security import get_current_user_id
-from ...core.config import settings
+from ...core.security import login_required, get_current_user_id
 
-router = APIRouter()
+bp = Blueprint("orders", __name__)
 
 
-@router.get("", response_model=OrderListResponse)
-def get_orders(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=settings.MAX_PAGE_SIZE),
-    status_filter: Optional[str] = Query(None, alias="status"),
-    supplier_id: Optional[int] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+def enrich_order(order):
+    """Helper to enrich order response"""
+    items = [
+        OrderItemResponse(
+            id=item.id,
+            order_id=item.order_id,
+            product_id=item.product_id,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            total_price=item.total_price,
+            product_name=item.product.name if item.product else None,
+            product_sku=item.product.sku if item.product else None,
+        )
+        for item in order.items
+    ]
+
+    return OrderResponse(
+        id=order.id,
+        order_number=order.order_number,
+        supplier_id=order.supplier_id,
+        user_id=order.user_id,
+        status=order.status,
+        total_amount=order.total_amount,
+        order_date=order.order_date,
+        expected_delivery=order.expected_delivery,
+        received_date=order.received_date,
+        notes=order.notes,
+        supplier_name=order.supplier.name if order.supplier else None,
+        username=order.user.username if order.user else None,
+        items=items,
+    )
+
+
+@bp.route("", methods=["GET"])
+@login_required
+def get_orders():
     """Get orders with filtering and pagination"""
+    db = get_db()
+    
+    try:
+        skip = int(request.args.get("skip", 0))
+        limit = int(request.args.get("limit", 20))
+        status_filter = request.args.get("status")
+        supplier_id = request.args.get("supplier_id")
+        if supplier_id:
+            supplier_id = int(supplier_id)
+            
+        start_date_str = request.args.get("start_date")
+        start_date = datetime.fromisoformat(start_date_str) if start_date_str else None
+        
+        end_date_str = request.args.get("end_date")
+        end_date = datetime.fromisoformat(end_date_str) if end_date_str else None
+    except ValueError:
+        return jsonify({"detail": "Invalid query parameters"}), 400
+
     filters = OrderFilter(
         status=status_filter,
         supplier_id=supplier_id,
@@ -42,257 +82,96 @@ def get_orders(
 
     orders, total = OrderService.get_orders(db, skip, limit, filters)
 
-    # Enrich orders
-    orders_response = []
-    for order in orders:
-        items = [
-            OrderItemResponse(
-                id=item.id,
-                order_id=item.order_id,
-                product_id=item.product_id,
-                quantity=item.quantity,
-                unit_price=item.unit_price,
-                total_price=item.total_price,
-                product_name=item.product.name if item.product else None,
-                product_sku=item.product.sku if item.product else None,
-            )
-            for item in order.items
-        ]
-
-        orders_response.append(OrderResponse(
-            id=order.id,
-            order_number=order.order_number,
-            supplier_id=order.supplier_id,
-            user_id=order.user_id,
-            status=order.status,
-            total_amount=order.total_amount,
-            order_date=order.order_date,
-            expected_delivery=order.expected_delivery,
-            received_date=order.received_date,
-            notes=order.notes,
-            supplier_name=order.supplier.name if order.supplier else None,
-            username=order.user.username if order.user else None,
-            items=items,
-        ))
+    orders_response = [enrich_order(order).model_dump() for order in orders]
 
     page = (skip // limit) + 1
-    return OrderListResponse(
+    response_data = OrderListResponse(
         orders=orders_response,
         total=total,
         page=page,
         page_size=limit
     )
+    return jsonify(response_data.model_dump())
 
 
-@router.get("/{order_id}", response_model=OrderResponse)
-def get_order(
-    order_id: int,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/<int:order_id>", methods=["GET"])
+@login_required
+def get_order(order_id: int):
     """Get order by ID"""
+    db = get_db()
     order = OrderService.get_order(db, order_id)
-
-    items = [
-        OrderItemResponse(
-            id=item.id,
-            order_id=item.order_id,
-            product_id=item.product_id,
-            quantity=item.quantity,
-            unit_price=item.unit_price,
-            total_price=item.total_price,
-            product_name=item.product.name if item.product else None,
-            product_sku=item.product.sku if item.product else None,
-        )
-        for item in order.items
-    ]
-
-    return OrderResponse(
-        id=order.id,
-        order_number=order.order_number,
-        supplier_id=order.supplier_id,
-        user_id=order.user_id,
-        status=order.status,
-        total_amount=order.total_amount,
-        order_date=order.order_date,
-        expected_delivery=order.expected_delivery,
-        received_date=order.received_date,
-        notes=order.notes,
-        supplier_name=order.supplier.name if order.supplier else None,
-        username=order.user.username if order.user else None,
-        items=items,
-    )
+    if not order:
+        return jsonify({"detail": "Order not found"}), 404
+    return jsonify(enrich_order(order).model_dump())
 
 
-@router.post("", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
-def create_order(
-    order_data: OrderCreate,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("", methods=["POST"])
+@login_required
+def create_order():
     """Create a new purchase order"""
+    db = get_db()
+    user_id = get_current_user_id()
+    try:
+        order_data = OrderCreate(**request.json)
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 400
+        
     order = OrderService.create_order(db, order_data, user_id)
-
-    items = [
-        OrderItemResponse(
-            id=item.id,
-            order_id=item.order_id,
-            product_id=item.product_id,
-            quantity=item.quantity,
-            unit_price=item.unit_price,
-            total_price=item.total_price,
-            product_name=item.product.name if item.product else None,
-            product_sku=item.product.sku if item.product else None,
-        )
-        for item in order.items
-    ]
-
-    return OrderResponse(
-        id=order.id,
-        order_number=order.order_number,
-        supplier_id=order.supplier_id,
-        user_id=order.user_id,
-        status=order.status,
-        total_amount=order.total_amount,
-        order_date=order.order_date,
-        expected_delivery=order.expected_delivery,
-        received_date=order.received_date,
-        notes=order.notes,
-        supplier_name=order.supplier.name if order.supplier else None,
-        username=order.user.username if order.user else None,
-        items=items,
-    )
+    return jsonify(enrich_order(order).model_dump()), 201
 
 
-@router.put("/{order_id}", response_model=OrderResponse)
-def update_order(
-    order_id: int,
-    order_data: OrderUpdate,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/<int:order_id>", methods=["PUT"])
+@login_required
+def update_order(order_id: int):
     """Update order"""
+    db = get_db()
+    try:
+        order_data = OrderUpdate(**request.json)
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 400
+        
     order = OrderService.update_order(db, order_id, order_data)
-
-    items = [
-        OrderItemResponse(
-            id=item.id,
-            order_id=item.order_id,
-            product_id=item.product_id,
-            quantity=item.quantity,
-            unit_price=item.unit_price,
-            total_price=item.total_price,
-            product_name=item.product.name if item.product else None,
-            product_sku=item.product.sku if item.product else None,
-        )
-        for item in order.items
-    ]
-
-    return OrderResponse(
-        id=order.id,
-        order_number=order.order_number,
-        supplier_id=order.supplier_id,
-        user_id=order.user_id,
-        status=order.status,
-        total_amount=order.total_amount,
-        order_date=order.order_date,
-        expected_delivery=order.expected_delivery,
-        received_date=order.received_date,
-        notes=order.notes,
-        supplier_name=order.supplier.name if order.supplier else None,
-        username=order.user.username if order.user else None,
-        items=items,
-    )
+    if not order:
+        return jsonify({"detail": "Order not found"}), 404
+    return jsonify(enrich_order(order).model_dump())
 
 
-@router.patch("/{order_id}/status", response_model=OrderResponse)
-def update_order_status(
-    order_id: int,
-    status_update: OrderStatusUpdate,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/<int:order_id>/status", methods=["PATCH"])
+@login_required
+def update_order_status(order_id: int):
     """Update order status"""
+    db = get_db()
+    try:
+        status_update = OrderStatusUpdate(**request.json)
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 400
+        
     order = OrderService.update_order_status(db, order_id, status_update.status)
-
-    items = [
-        OrderItemResponse(
-            id=item.id,
-            order_id=item.order_id,
-            product_id=item.product_id,
-            quantity=item.quantity,
-            unit_price=item.unit_price,
-            total_price=item.total_price,
-            product_name=item.product.name if item.product else None,
-            product_sku=item.product.sku if item.product else None,
-        )
-        for item in order.items
-    ]
-
-    return OrderResponse(
-        id=order.id,
-        order_number=order.order_number,
-        supplier_id=order.supplier_id,
-        user_id=order.user_id,
-        status=order.status,
-        total_amount=order.total_amount,
-        order_date=order.order_date,
-        expected_delivery=order.expected_delivery,
-        received_date=order.received_date,
-        notes=order.notes,
-        supplier_name=order.supplier.name if order.supplier else None,
-        username=order.user.username if order.user else None,
-        items=items,
-    )
+    if not order:
+        return jsonify({"detail": "Order not found"}), 404
+    return jsonify(enrich_order(order).model_dump())
 
 
-@router.post("/{order_id}/receive", response_model=OrderResponse)
-def receive_order(
-    order_id: int,
-    receive_data: ReceiveOrder,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/<int:order_id>/receive", methods=["POST"])
+@login_required
+def receive_order(order_id: int):
     """Receive order and update inventory"""
+    db = get_db()
+    try:
+        receive_data = ReceiveOrder(**request.json)
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 400
+        
     order = OrderService.receive_order(db, order_id, receive_data)
-
-    items = [
-        OrderItemResponse(
-            id=item.id,
-            order_id=item.order_id,
-            product_id=item.product_id,
-            quantity=item.quantity,
-            unit_price=item.unit_price,
-            total_price=item.total_price,
-            product_name=item.product.name if item.product else None,
-            product_sku=item.product.sku if item.product else None,
-        )
-        for item in order.items
-    ]
-
-    return OrderResponse(
-        id=order.id,
-        order_number=order.order_number,
-        supplier_id=order.supplier_id,
-        user_id=order.user_id,
-        status=order.status,
-        total_amount=order.total_amount,
-        order_date=order.order_date,
-        expected_delivery=order.expected_delivery,
-        received_date=order.received_date,
-        notes=order.notes,
-        supplier_name=order.supplier.name if order.supplier else None,
-        username=order.user.username if order.user else None,
-        items=items,
-    )
+    if not order:
+        return jsonify({"detail": "Order not found"}), 404
+    return jsonify(enrich_order(order).model_dump())
 
 
-@router.delete("/{order_id}")
-def delete_order(
-    order_id: int,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/<int:order_id>", methods=["DELETE"])
+@login_required
+def delete_order(order_id: int):
     """Delete order (only pending)"""
+    db = get_db()
     OrderService.delete_order(db, order_id)
-    return {"message": "Order deleted successfully"}
+    return jsonify({"message": "Order deleted successfully"})

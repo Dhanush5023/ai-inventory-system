@@ -1,7 +1,5 @@
-from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.orm import Session
+from flask import Blueprint, request, jsonify
 from typing import Optional
-
 from ...models.database import get_db, Supplier
 from ...schemas.suppliers import (
     SupplierCreate,
@@ -9,22 +7,25 @@ from ...schemas.suppliers import (
     SupplierResponse,
     SupplierListResponse,
 )
-from ...core.security import get_current_user_id
-from ...core.config import settings
-from fastapi import HTTPException
+from ...core.security import login_required
 
-router = APIRouter()
+bp = Blueprint("suppliers", __name__)
 
 
-@router.get("", response_model=SupplierListResponse)
-def get_suppliers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=settings.MAX_PAGE_SIZE),
-    is_active: Optional[bool] = None,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("", methods=["GET"])
+@login_required
+def get_suppliers():
     """Get suppliers with pagination"""
+    db = get_db()
+    
+    try:
+        skip = int(request.args.get("skip", 0))
+        limit = int(request.args.get("limit", 20))
+        is_active_str = request.args.get("is_active")
+        is_active = is_active_str.lower() == "true" if is_active_str else None
+    except ValueError:
+        return jsonify({"detail": "Invalid query parameters"}), 400
+
     query = db.query(Supplier)
 
     if is_active is not None:
@@ -33,7 +34,6 @@ def get_suppliers(
     total = query.count()
     suppliers = query.offset(skip).limit(limit).all()
 
-    # Enrich with counts
     suppliers_response = []
     for supplier in suppliers:
         suppliers_response.append(SupplierResponse(
@@ -50,33 +50,29 @@ def get_suppliers(
             created_at=supplier.created_at,
             product_count=len(supplier.products),
             total_orders=len(supplier.orders),
-            average_delivery_time=None,  # TODO: Calculate from orders
-        ))
+            average_delivery_time=None,
+        ).model_dump())
 
     page = (skip // limit) + 1
-    return SupplierListResponse(
+    response_data = SupplierListResponse(
         suppliers=suppliers_response,
         total=total,
         page=page,
         page_size=limit
     )
+    return jsonify(response_data.model_dump())
 
 
-@router.get("/{supplier_id}", response_model=SupplierResponse)
-def get_supplier(
-    supplier_id: int,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/<int:supplier_id>", methods=["GET"])
+@login_required
+def get_supplier(supplier_id: int):
     """Get supplier by ID"""
+    db = get_db()
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Supplier not found"
-        )
+        return jsonify({"detail": "Supplier not found"}), 404
 
-    return SupplierResponse(
+    return jsonify(SupplierResponse(
         id=supplier.id,
         name=supplier.name,
         contact_person=supplier.contact_person,
@@ -91,22 +87,25 @@ def get_supplier(
         product_count=len(supplier.products),
         total_orders=len(supplier.orders),
         average_delivery_time=None,
-    )
+    ).model_dump())
 
 
-@router.post("", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED)
-def create_supplier(
-    supplier_data: SupplierCreate,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("", methods=["POST"])
+@login_required
+def create_supplier():
     """Create a new supplier"""
+    db = get_db()
+    try:
+        supplier_data = SupplierCreate(**request.json)
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 400
+        
     supplier = Supplier(**supplier_data.model_dump())
     db.add(supplier)
     db.commit()
     db.refresh(supplier)
 
-    return SupplierResponse(
+    return jsonify(SupplierResponse(
         id=supplier.id,
         name=supplier.name,
         contact_person=supplier.contact_person,
@@ -121,23 +120,22 @@ def create_supplier(
         product_count=0,
         total_orders=0,
         average_delivery_time=None,
-    )
+    ).model_dump()), 201
 
 
-@router.put("/{supplier_id}", response_model=SupplierResponse)
-def update_supplier(
-    supplier_id: int,
-    supplier_data: SupplierUpdate,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/<int:supplier_id>", methods=["PUT"])
+@login_required
+def update_supplier(supplier_id: int):
     """Update supplier"""
+    db = get_db()
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Supplier not found"
-        )
+        return jsonify({"detail": "Supplier not found"}), 404
+
+    try:
+        supplier_data = SupplierUpdate(**request.json)
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 400
 
     update_data = supplier_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -146,7 +144,7 @@ def update_supplier(
     db.commit()
     db.refresh(supplier)
 
-    return SupplierResponse(
+    return jsonify(SupplierResponse(
         id=supplier.id,
         name=supplier.name,
         contact_person=supplier.contact_person,
@@ -161,31 +159,22 @@ def update_supplier(
         product_count=len(supplier.products),
         total_orders=len(supplier.orders),
         average_delivery_time=None,
-    )
+    ).model_dump())
 
 
-@router.delete("/{supplier_id}")
-def delete_supplier(
-    supplier_id: int,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/<int:supplier_id>", methods=["DELETE"])
+@login_required
+def delete_supplier(supplier_id: int):
     """Delete supplier"""
+    db = get_db()
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Supplier not found"
-        )
+        return jsonify({"detail": "Supplier not found"}), 404
 
-    # Check if supplier has orders or products
     if len(supplier.orders) > 0 or len(supplier.products) > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete supplier with existing orders or products. Deactivate instead."
-        )
+        return jsonify({"detail": "Cannot delete supplier with existing orders or products. Deactivate instead."}), 400
 
     db.delete(supplier)
     db.commit()
 
-    return {"message": "Supplier deleted successfully"}
+    return jsonify({"message": "Supplier deleted successfully"})

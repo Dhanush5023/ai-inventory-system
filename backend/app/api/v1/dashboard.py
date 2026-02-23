@@ -1,18 +1,16 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-
+from flask import Blueprint, jsonify
 from ...models.database import get_db
 from ...schemas.analytics import DashboardOverview
 from ...services.analytics_service import AnalyticsService
-from ...core.security import get_current_user_id
+from ...core.security import login_required
 
-router = APIRouter()
+bp = Blueprint("dashboard", __name__)
 
 
-@router.get("", response_model=DashboardOverview)
-def get_dashboard(
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("", methods=["GET"])
+@login_required
+def get_dashboard():
     """Get main dashboard overview with KPIs"""
-    return AnalyticsService.get_dashboard_overview(db)
+    db = get_db()
+    data = AnalyticsService.get_dashboard_overview(db)
+    return jsonify(DashboardOverview.model_validate(data).model_dump())

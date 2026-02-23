@@ -1,45 +1,49 @@
 """
-API v1 Router
+API v1 Blueprint
 """
 
-from fastapi import APIRouter
+from flask import Blueprint
+
+api_v1_bp = Blueprint("api_v1", __name__)
+
 from . import auth, users, products, sales, suppliers, orders, predictions, alerts, analytics, dashboard
 
-api_router = APIRouter()
+# The blueprints from submodules will be registered to api_v1_bp
+# or we can just import the modules and they register themselves to api_v1_bp
+# In this case, I'll have the submodules define their own blueprints and register them here.
 
-# Core route modules
-api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-api_router.include_router(users.router, prefix="/users", tags=["Users"])
-api_router.include_router(products.router, prefix="/products", tags=["Products"])
-api_router.include_router(sales.router, prefix="/sales", tags=["Sales"])
-api_router.include_router(suppliers.router, prefix="/suppliers", tags=["Suppliers"])
-api_router.include_router(orders.router, prefix="/orders", tags=["Orders"])
-api_router.include_router(predictions.router, prefix="/predictions", tags=["Predictions"])
-api_router.include_router(alerts.router, prefix="/alerts", tags=["Alerts"])
-api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
-api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+api_v1_bp.register_blueprint(auth.bp, url_prefix="/auth")
+api_v1_bp.register_blueprint(users.bp, url_prefix="/users")
+api_v1_bp.register_blueprint(products.bp, url_prefix="/products")
+api_v1_bp.register_blueprint(sales.bp, url_prefix="/sales")
+api_v1_bp.register_blueprint(suppliers.bp, url_prefix="/suppliers")
+api_v1_bp.register_blueprint(orders.bp, url_prefix="/orders")
+api_v1_bp.register_blueprint(predictions.bp, url_prefix="/predictions")
+api_v1_bp.register_blueprint(alerts.bp, url_prefix="/alerts")
+api_v1_bp.register_blueprint(analytics.bp, url_prefix="/analytics")
+api_v1_bp.register_blueprint(dashboard.bp, url_prefix="/dashboard")
 
-# AI Features (isolated to prevent dependency issues from crashing the whole API)
+# AI Features (isolated to prevent dependency issues)
 try:
     from . import chatbot
-    api_router.include_router(chatbot.router, prefix="/ai/chatbot", tags=["AI Chatbot"])
+    api_v1_bp.register_blueprint(chatbot.bp, url_prefix="/ai/chatbot")
 except Exception as e:
-    print(f"[WARNING] Could not load Chatbot router: {e}")
+    print(f"[WARNING] Could not load Chatbot blueprint: {e}")
 
 try:
     from . import optimization
-    api_router.include_router(optimization.router, prefix="/ai/optimization", tags=["AI Optimization"])
+    api_v1_bp.register_blueprint(optimization.bp, url_prefix="/ai/optimization")
 except Exception as e:
-    print(f"[WARNING] Could not load Optimization router: {e}")
+    print(f"[WARNING] Could not load Optimization blueprint: {e}")
 
 try:
     from . import autonomous
-    api_router.include_router(autonomous.router, prefix="/ai/autonomous", tags=["Autonomous Operations"])
+    api_v1_bp.register_blueprint(autonomous.bp, url_prefix="/ai/autonomous")
 except Exception as e:
-    print(f"[WARNING] Could not load Autonomous router: {e}")
+    print(f"[WARNING] Could not load Autonomous blueprint: {e}")
 
 try:
     from . import perception
-    api_router.include_router(perception.router, prefix="/ai/perception", tags=["Perception & Security"])
+    api_v1_bp.register_blueprint(perception.bp, url_prefix="/ai/perception")
 except Exception as e:
-    print(f"[WARNING] Could not load Perception router: {e}")
+    print(f"[WARNING] Could not load Perception blueprint: {e}")

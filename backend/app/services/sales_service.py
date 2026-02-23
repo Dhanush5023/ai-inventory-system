@@ -1,11 +1,6 @@
-"""
-Sales Service Layer
-Business logic for sales management
-"""
-
+from flask import abort
 from sqlalchemy import func, and_, extract
 from sqlalchemy.orm import Session, joinedload
-from fastapi import HTTPException, status
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 
@@ -25,10 +20,7 @@ class SalesService:
         
         # Check stock availability
         if product.current_stock < sale_data.quantity:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Insufficient stock. Available: {product.current_stock}, Requested: {sale_data.quantity}"
-            )
+            abort(400, description=f"Insufficient stock. Available: {product.current_stock}, Requested: {sale_data.quantity}")
         
         # Calculate total amount
         total_amount = sale_data.quantity * sale_data.unit_price
@@ -55,10 +47,7 @@ class SalesService:
             return new_sale
         except Exception as e:
             db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to create sale: {str(e)}"
-            )
+            abort(400, description=f"Failed to create sale: {str(e)}")
     
     @staticmethod
     def create_bulk_sales(db: Session, sales_data: list[SaleCreate], user_id: int) -> list[Sale]:
@@ -69,10 +58,7 @@ class SalesService:
                 # Verify product and stock
                 product = ProductService.get_product(db, sale_item.product_id)
                 if product.current_stock < sale_item.quantity:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Insufficient stock for {product.name}. Available: {product.current_stock}"
-                    )
+                    abort(400, description=f"Insufficient stock for {product.name}. Available: {product.current_stock}")
                 
                 # Calculate total
                 total_amount = sale_item.quantity * sale_item.unit_price
@@ -100,23 +86,20 @@ class SalesService:
                 db.refresh(sale)
             return created_sales
             
+        except HTTPException:
+            db.rollback()
+            raise
         except Exception as e:
             db.rollback()
             print(f"Error in bulk sales: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Bulk sale failed: {str(e)}"
-            )
+            abort(500, description=f"Bulk sale failed: {str(e)}")
     
     @staticmethod
     def get_sale(db: Session, sale_id: int) -> Sale:
         """Get sale by ID"""
         sale = db.query(Sale).filter(Sale.id == sale_id).first()
         if not sale:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Sale not found"
-            )
+            abort(404, description="Sale not found")
         return sale
     
     @staticmethod
@@ -177,10 +160,7 @@ class SalesService:
             if quantity_diff > 0:
                 product = ProductService.get_product(db, sale.product_id)
                 if product.current_stock < quantity_diff:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Insufficient stock for update. Available: {product.current_stock}"
-                    )
+                    abort(400, description=f"Insufficient stock for update. Available: {product.current_stock}")
                 product.current_stock -= quantity_diff
             else:
                 # Return stock if decreasing quantity
@@ -203,10 +183,7 @@ class SalesService:
             return sale
         except Exception as e:
             db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to update sale: {str(e)}"
-            )
+            abort(400, description=f"Failed to update sale: {str(e)}")
     
     @staticmethod
     def delete_sale(db: Session, sale_id: int) -> dict:
@@ -224,10 +201,7 @@ class SalesService:
             return {"message": "Sale deleted and stock restored successfully"}
         except Exception as e:
             db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to delete sale: {str(e)}"
-            )
+            abort(400, description=f"Failed to delete sale: {str(e)}")
     
     @staticmethod
     def get_sales_summary(db: Session, days: int = 30) -> Dict:

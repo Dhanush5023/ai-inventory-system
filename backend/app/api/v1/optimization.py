@@ -1,42 +1,37 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import List
+from flask import Blueprint, request, jsonify
 from ...models.database import get_db, Product
 from ...schemas.optimization import OptimizationMetrics, OptimizationResponse
 from ...ai.optimization.engine import optimization_engine
-from ...core.security import get_current_user_id
+from ...core.security import login_required
 
-router = APIRouter()
+bp = Blueprint("optimization", __name__)
 
-@router.get("/metrics", response_model=OptimizationResponse)
-def get_all_optimization_metrics(
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/metrics", methods=["GET"])
+@login_required
+def get_all_optimization_metrics():
     """
     Get optimization metrics (EOQ, Safety Stock) for all products
     """
+    db = get_db()
     products = db.query(Product).all()
     results = []
     
     for product in products:
         metrics = optimization_engine.optimize_product(db, product.id)
         if metrics:
-            results.append(OptimizationMetrics(**metrics))
+            results.append(OptimizationMetrics(**metrics).model_dump())
             
-    return OptimizationResponse(items=results, count=len(results))
+    return jsonify(OptimizationResponse(items=results, count=len(results)).model_dump())
 
-@router.get("/product/{product_id}", response_model=OptimizationMetrics)
-def get_product_optimization_metrics(
-    product_id: int,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/product/<int:product_id>", methods=["GET"])
+@login_required
+def get_product_optimization_metrics(product_id: int):
     """
     Get optimization metrics for a specific product
     """
+    db = get_db()
     metrics = optimization_engine.optimize_product(db, product_id)
     if not metrics:
-        raise HTTPException(status_code=404, detail="Product not found")
+        return jsonify({"detail": "Product not found"}), 404
         
-    return OptimizationMetrics(**metrics)
+    return jsonify(OptimizationMetrics(**metrics).model_dump())

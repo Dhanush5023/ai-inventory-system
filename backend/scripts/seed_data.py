@@ -101,15 +101,6 @@ def create_users(db: Session):
             is_active=True
         ),
         User(
-            email='staff@inventory.com',
-            username='staff',
-            hashed_password=get_password_hash('staff123'),
-            full_name='Staff User',
-            is_admin=False,
-            role='staff',
-            is_active=True
-        ),
-        User(
             email='customer@inventory.com',
             username='customer',
             hashed_password=get_password_hash('customer123'),
@@ -328,7 +319,7 @@ def seed_database():
         print("-" * 50)
         print("Admin:   email: admin@inventory.com    password: admin123")
         print("Manager: email: manager@inventory.com  password: manager123")
-        print("Staff:   email: staff@inventory.com    password: staff123")
+        print("Customer: email: customer@inventory.com password: customer123")
         print("-" * 50 + "\n")
         
     except Exception as e:

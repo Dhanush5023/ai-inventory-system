@@ -13,11 +13,15 @@ import Analytics from './pages/Analytics';
 import Optimization from './pages/Optimization';
 import Orders from './pages/Orders';
 import Security from './pages/Security';
+import Storefront from './pages/Storefront';
+import CustomerOrders from './pages/CustomerOrders';
+import Profile from './pages/Profile';
+import TrackOrder from './pages/TrackOrder';
 import Layout from './components/Layout';
 import AIAssistant from './components/AIAssistant';
 
-const ProtectedRoute = ({ children }) => {
-    const { isAuthenticated, loading } = useAuth();
+const ProtectedRoute = ({ children, roles = [] }) => {
+    const { isAuthenticated, user, loading } = useAuth();
 
     if (loading) {
         return (
@@ -27,7 +31,27 @@ const ProtectedRoute = ({ children }) => {
             </div>
         );
     }
-    return isAuthenticated ? children : <Navigate to="/login" />;
+
+    if (!isAuthenticated) {
+        return <Navigate to="/login" />;
+    }
+
+    if (roles.length > 0 && !roles.includes(user?.role)) {
+        // Redirect to their respective "home" if they try to access unauthorized route
+        const homePath = user?.role === 'customer' ? '/store' : '/';
+        return <Navigate to={homePath} />;
+    }
+
+    return children;
+};
+
+// Home component to redirect based on role
+const RoleBasedHome = () => {
+    const { user } = useAuth();
+    if (user?.role === 'customer') {
+        return <Navigate to="/store" replace />;
+    }
+    return <Dashboard />;
 };
 
 function App() {
@@ -44,15 +68,23 @@ function App() {
                             <ProtectedRoute>
                                 <Layout>
                                     <Routes>
-                                        <Route path="/" element={<Dashboard />} />
-                                        <Route path="/products" element={<Products />} />
-                                        <Route path="/sales" element={<Sales />} />
-                                        <Route path="/suppliers" element={<Suppliers />} />
-                                        <Route path="/alerts" element={<Alerts />} />
-                                        <Route path="/analytics" element={<Analytics />} />
-                                        <Route path="/optimization" element={<Optimization />} />
-                                        <Route path="/orders" element={<Orders />} />
-                                        <Route path="/security" element={<Security />} />
+                                        <Route path="/" element={<RoleBasedHome />} />
+                                        <Route path="/store" element={<ProtectedRoute roles={['customer', 'admin']}><Storefront /></ProtectedRoute>} />
+                                        <Route path="/my-orders" element={<ProtectedRoute roles={['customer', 'admin']}><CustomerOrders /></ProtectedRoute>} />
+                                        <Route path="/profile" element={<ProtectedRoute roles={['customer', 'admin']}><Profile /></ProtectedRoute>} />
+                                        <Route path="/track-order" element={<ProtectedRoute roles={['customer', 'admin']}><TrackOrder /></ProtectedRoute>} />
+
+                                        <Route path="/products" element={<ProtectedRoute roles={['admin', 'manager']}><Products /></ProtectedRoute>} />
+                                        <Route path="/sales" element={<ProtectedRoute roles={['admin', 'manager']}><Sales /></ProtectedRoute>} />
+                                        <Route path="/suppliers" element={<ProtectedRoute roles={['admin', 'manager']}><Suppliers /></ProtectedRoute>} />
+                                        <Route path="/alerts" element={<ProtectedRoute roles={['admin', 'manager']}><Alerts /></ProtectedRoute>} />
+                                        <Route path="/analytics" element={<ProtectedRoute roles={['admin', 'manager']}><Analytics /></ProtectedRoute>} />
+                                        <Route path="/optimization" element={<ProtectedRoute roles={['admin', 'manager']}><Optimization /></ProtectedRoute>} />
+                                        <Route path="/orders" element={<ProtectedRoute roles={['admin', 'manager']}><Orders /></ProtectedRoute>} />
+                                        <Route path="/security" element={<ProtectedRoute roles={['admin', 'manager']}><Security /></ProtectedRoute>} />
+
+                                        {/* Catch all for authenticated users */}
+                                        <Route path="*" element={<Navigate to="/" replace />} />
                                     </Routes>
                                 </Layout>
                             </ProtectedRoute>

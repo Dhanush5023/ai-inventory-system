@@ -1,11 +1,6 @@
-"""
-Alert Service Layer
-Automated stock alert generation and management
-"""
-
+from flask import abort
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from fastapi import HTTPException, status
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 
@@ -22,10 +17,7 @@ class AlertService:
         # Verify product exists
         product = db.query(Product).filter(Product.id == alert_data.product_id).first()
         if not product:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Product not found"
-            )
+            abort(404, description="Product not found")
         
         new_alert = Alert(**alert_data.model_dump())
         
@@ -36,20 +28,14 @@ class AlertService:
             return new_alert
         except Exception as e:
             db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to create alert: {str(e)}"
-            )
+            abort(400, description=f"Failed to create alert: {str(e)}")
     
     @staticmethod
     def get_alert(db: Session, alert_id: int) -> Alert:
         """Get alert by ID"""
         alert = db.query(Alert).filter(Alert.id == alert_id).first()
         if not alert:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Alert not found"
-            )
+            abort(404, description="Alert not found")
         return alert
     
     @staticmethod
@@ -113,10 +99,7 @@ class AlertService:
             return alert
         except Exception as e:
             db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to update alert: {str(e)}"
-            )
+            abort(400, description=f"Failed to update alert: {str(e)}")
     
     @staticmethod
     def mark_as_read(db: Session, alert_id: int) -> Alert:
@@ -148,10 +131,7 @@ class AlertService:
             return {"message": "Alert deleted successfully"}
         except Exception as e:
             db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to delete alert: {str(e)}"
-            )
+            abort(400, description=f"Failed to delete alert: {str(e)}")
     
     @staticmethod
     def check_product_stock(db: Session, product: Product) -> Optional[Alert]:

@@ -1,17 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
-from jose import JWTError, jwt
+import jwt
 import bcrypt
-from fastapi import HTTPException, status, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from flask import request, jsonify, g
+from functools import wraps
 from .config import settings
-
-# Password hashing
-# pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# HTTP Bearer token
-security = HTTPBearer()
-
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
@@ -28,9 +21,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
     
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
@@ -42,24 +35,50 @@ def decode_access_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    except jwt.PyJWTError:
+        return None
 
 
-def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)) -> int:
-    """Extract user ID from JWT token"""
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    user_id: int = payload.get("sub")
+def login_required(f):
+    """Decorator for routes that require authentication"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(" ")[1]
+        
+        if not token:
+            return jsonify({"detail": "Token is missing"}), 401
+        
+        payload = decode_access_token(token)
+        if not payload:
+            return jsonify({"detail": "Token is invalid or expired"}), 401
+        
+        g.user_id = payload.get("sub")
+        g.user_role = payload.get("role")
+        return f(*args, **kwargs)
     
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-        )
-    
-    return user_id
+    return decorated
+
+
+def roles_required(*roles):
+    """Decorator for routes that require specific roles"""
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not hasattr(g, 'user_role'):
+                return jsonify({"detail": "User role not found"}), 401
+            
+            if g.user_role not in roles:
+                return jsonify({"detail": f"Access denied. Required roles: {', '.join(roles)}"}), 403
+            
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+
+def get_current_user_id() -> int:
+    """Helper to get current user ID from g"""
+    return g.get("user_id")

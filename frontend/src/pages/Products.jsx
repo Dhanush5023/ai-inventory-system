@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import { Package, Search, Filter, Plus, Edit, Trash2, X, Save, TrendingUp, Info, ArrowUpRight, Clock } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const Products = () => {
+    const { user } = useAuth();
+    const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -216,17 +219,27 @@ const Products = () => {
                                         >
                                             <TrendingUp className="h-4 w-4" />
                                         </button>
-                                        <button onClick={() => openEditModal(product)} className="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300">
-                                            <Edit className="h-4 w-4" />
-                                        </button>
-                                        <button onClick={() => handleDelete(product.id)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
+                                        {isAdminOrManager && (
+                                            <>
+                                                <button onClick={() => openEditModal(product)} className="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300">
+                                                    <Edit className="h-4 w-4" />
+                                                </button>
+                                                <button onClick={() => handleDelete(product.id)} className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
+                                                    <Trash2 className="h-4 w-4" />
+                                                </button>
+                                            </>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
+                    {filteredProducts.length === 0 && !loading && (
+                        <div className="text-center py-16 text-muted-foreground">
+                            <p className="text-lg font-medium">No products found.</p>
+                            <p className="text-sm mt-1">Try adjusting your search or add a new product.</p>
+                        </div>
+                    )}
                 </div>
             </div>
 

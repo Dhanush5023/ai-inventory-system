@@ -1,45 +1,51 @@
-from fastapi import APIRouter, Depends, HTTPException,status
-from sqlalchemy.orm import Session
-
+from flask import Blueprint, request, jsonify
 from ...models.database import get_db
 from ...schemas.auth import UserLogin, UserRegister, Token
 from ...schemas.users import UserResponse
 from ...services.auth_service import AuthService
-from ...core.security import get_current_user_id
+from ...core.security import login_required, get_current_user_id
 
-router = APIRouter()
+bp = Blueprint("auth", __name__)
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(
-    user_data: UserRegister,
-    db: Session = Depends(get_db)
-):
+@bp.route("/register", methods=["POST"])
+def register():
     """Register a new user"""
+    db = get_db()
+    try:
+        user_data = UserRegister(**request.json)
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 400
+        
     user = AuthService.register_user(db, user_data)
-    return user
+    # Convert Pydantic model to dict for jsonify
+    return jsonify(UserResponse.model_validate(user).model_dump()), 201
 
 
-@router.post("/login", response_model=Token)
-def login(
-    login_data: UserLogin,
-    db: Session = Depends(get_db)
-):
+@bp.route("/login", methods=["POST"])
+def login():
     """Authenticate user and return JWT token"""
-    return AuthService.authenticate_user(db, login_data)
+    db = get_db()
+    try:
+        login_data = UserLogin(**request.json)
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 400
+        
+    token_data = AuthService.authenticate_user(db, login_data)
+    return jsonify(token_data.model_dump())
 
 
-@router.get("/me", response_model=UserResponse)
-def get_current_user(
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/me", methods=["GET"])
+@login_required
+def get_current_user():
     """Get current authenticated user"""
+    db = get_db()
+    user_id = get_current_user_id()
     user = AuthService.get_user_by_id(db, user_id)
-    return user
+    return jsonify(UserResponse.model_validate(user).model_dump())
 
 
-@router.post("/logout")
+@bp.route("/logout", methods=["POST"])
 def logout():
     """Logout user (token invalidation handled client-side)"""
-    return {"message": "Successfully logged out"}
+    return jsonify({"message": "Successfully logged out"})

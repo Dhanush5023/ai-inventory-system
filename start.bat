@@ -15,7 +15,7 @@ cd ..
 
 echo.
 echo [3/4] Starting Backend Server...
-start cmd /k "cd backend && uvicorn app.main:app --reload"
+start cmd /k "cd backend && python -m app.main"
 
 echo.
 echo [4/4] Starting Frontend Server...

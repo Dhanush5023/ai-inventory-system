@@ -1,6 +1,6 @@
+from flask import abort
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from fastapi import HTTPException, status
 from datetime import timedelta
 from typing import Optional
 
@@ -27,15 +27,9 @@ class AuthService:
 
         if existing_user:
             if existing_user.email == user_data.email:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Email already registered"
-                )
+                abort(400, description="Email already registered")
             else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Username already taken"
-                )
+                abort(400, description="Username already taken")
 
         # Create new user
         hashed_password = get_password_hash(user_data.password)
@@ -54,10 +48,7 @@ class AuthService:
             return new_user
         except IntegrityError:
             db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User registration failed"
-            )
+            abort(400, description="User registration failed")
 
     @staticmethod
     def authenticate_user(db: Session, login_data: UserLogin) -> Token:
@@ -66,26 +57,15 @@ class AuthService:
         user = db.query(User).filter(User.email == login_data.email).first()
 
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            abort(401, description="Incorrect email or password")
 
         # Verify password
         if not verify_password(login_data.password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            abort(401, description="Incorrect email or password")
 
         # Check if user is active
         if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is disabled"
-            )
+            abort(403, description="User account is disabled")
 
         # Create access token
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -105,8 +85,5 @@ class AuthService:
         """Get user by ID"""
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+            abort(404, description="User not found")
         return user

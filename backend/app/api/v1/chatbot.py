@@ -1,26 +1,27 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from flask import Blueprint, request, jsonify
 from ...models.database import get_db
 from ...schemas.chatbot import ChatRequest, ChatResponse
 from ...ai.chatbot.assistant import assistant
-from ...core.security import get_current_user_id
+from ...core.security import login_required, get_current_user_id, roles_required
 
-router = APIRouter()
+bp = Blueprint("chatbot", __name__)
 
-@router.post("/query", response_model=ChatResponse)
-async def query_assistant(
-    request: ChatRequest,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
+@bp.route("/query", methods=["POST"])
+@login_required
+@roles_required("admin", "manager")
+def query_assistant():
     """
     Ask a business question to the AI Smart Decision Assistant
     """
+    db = get_db()
     try:
-        answer = await assistant.answer_question(request.question, db)
-        return ChatResponse(answer=answer)
+        chat_request = ChatRequest(**request.json)
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"AI Assistant Error: {str(e)}"
-        )
+        return jsonify({"detail": str(e)}), 400
+        
+    try:
+        # Call synchronous answer_question
+        answer = assistant.answer_question(chat_request.question, db)
+        return jsonify(ChatResponse(answer=answer).model_dump())
+    except Exception as e:
+        return jsonify({"detail": f"AI Assistant Error: {str(e)}"}), 500

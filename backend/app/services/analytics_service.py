@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, and_, desc
 from typing import Optional, List
 from datetime import datetime, timedelta
 
@@ -21,33 +22,32 @@ class AnalyticsService:
 
     @staticmethod
     def get_dashboard_overview(db: Session) -> DashboardOverview:
-        """Get main dashboard overview with KPIs"""
-        total_products = db.query(Product).count()
-        low_stock_count = db.query(Product).filter(Product.current_stock <= Product.minimum_stock).count()
-        critical_alerts = db.query(Alert).filter(Alert.severity == "critical", Alert.is_resolved == False).count()
-        pending_orders = db.query(Order).filter(Order.status == "pending").count()
+        """Get main dashboard overview with KPIs (Optimized)"""
+        now = datetime.utcnow()
+        thirty_days_ago = now - timedelta(days=30)
+        sixty_days_ago = now - timedelta(days=60)
+        seven_days_ago = now - timedelta(days=7)
 
-        # Recent sales count (last 7 days)
-        seven_days_ago = datetime.utcnow() - timedelta(days=7)
-        recent_sales_count = db.query(Sale).filter(Sale.sale_date >= seven_days_ago).count()
+        # 1. KPI Counts (Single queries)
+        total_products = db.query(func.count(Product.id)).scalar() or 0
+        low_stock_count = db.query(func.count(Product.id)).filter(Product.current_stock <= Product.minimum_stock).scalar() or 0
+        critical_alerts = db.query(func.count(Alert.id)).filter(Alert.severity == "critical", Alert.is_resolved == False).scalar() or 0
+        pending_orders = db.query(func.count(Order.id)).filter(Order.status == "pending").scalar() or 0
+        recent_sales_count = db.query(func.count(Sale.id)).filter(Sale.sale_date >= seven_days_ago).scalar() or 0
 
-        # Simple revenue calculation (30 days)
-        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
-        sales = db.query(Sale).filter(Sale.sale_date >= thirty_days_ago).all()
-        total_revenue = sum(s.total_amount for s in sales)
-
-        # Previous 30-day revenue for trend
-        sixty_days_ago = datetime.utcnow() - timedelta(days=60)
-        previous_sales = db.query(Sale).filter(Sale.sale_date >= sixty_days_ago, Sale.sale_date < thirty_days_ago).all()
-        previous_revenue = sum(s.total_amount for s in previous_sales)
+        # 2. Revenue Aggregation (Database-level sums)
+        total_revenue = db.query(func.sum(Sale.total_amount)).filter(Sale.sale_date >= thirty_days_ago).scalar() or 0.0
+        previous_revenue = db.query(func.sum(Sale.total_amount)).filter(
+            Sale.sale_date >= sixty_days_ago, 
+            Sale.sale_date < thirty_days_ago
+        ).scalar() or 0.0
 
         revenue_growth = 0.0
         if previous_revenue > 0:
             revenue_growth = ((total_revenue - previous_revenue) / previous_revenue) * 100
 
-        # Total stock value
-        all_products = db.query(Product).all()
-        total_stock_value = sum(p.current_stock * p.cost_price for p in all_products)
+        # 3. Stock Value (Database-level sum extension)
+        total_stock_value = db.query(func.sum(Product.current_stock * Product.cost_price)).scalar() or 0.0
 
         kpis = [
             DashboardKPI(label="Total Products", value=total_products, icon="package"),
@@ -72,27 +72,32 @@ class AnalyticsService:
 
     @staticmethod
     def get_inventory_metrics(db: Session) -> InventoryMetrics:
-        """Get inventory metrics"""
-        products = db.query(Product).all()
-        
-        total_products = len(products)
-        total_stock_value = sum(p.current_stock * p.cost_price for p in products)
-        in_stock_products = len([p for p in products if p.current_stock > p.minimum_stock])
-        low_stock_products = len([p for p in products if 0 < p.current_stock <= p.minimum_stock])
-        out_of_stock_products = len([p for p in products if p.current_stock == 0])
+        """Get inventory metrics (Optimized)"""
+        # Batch calculations to database
+        stats = db.query(
+            func.count(Product.id).label('total'),
+            func.sum(Product.current_stock * Product.cost_price).label('value'),
+            func.sum(Product.current_stock).label('count_units')
+        ).first()
 
-        # Inventory Turnover (Simple approximation: COGS / Avg Inventory)
-        # Using 30-day COGS normalized to annual
+        total_products = stats.total or 0
+        total_stock_value = stats.value or 0.0
+        total_stock_count = stats.count_units or 0
+
+        in_stock_products = db.query(func.count(Product.id)).filter(Product.current_stock > Product.minimum_stock).scalar() or 0
+        low_stock_products = db.query(func.count(Product.id)).filter(Product.current_stock > 0, Product.current_stock <= Product.minimum_stock).scalar() or 0
+        out_of_stock_products = db.query(func.count(Product.id)).filter(Product.current_stock == 0).scalar() or 0
+
+        # Inventory Turnover (Database-level)
         thirty_days_ago = datetime.utcnow() - timedelta(days=30)
-        sales = db.query(Sale).join(Product).filter(Sale.sale_date >= thirty_days_ago).all()
-        cogs = sum(s.quantity * s.product.cost_price for s in sales if s.product)
+        cogs = db.query(func.sum(Sale.quantity * Product.cost_price)).join(Product).filter(Sale.sale_date >= thirty_days_ago).scalar() or 0.0
         inventory_turnover_ratio = (cogs / total_stock_value * 12) if total_stock_value > 0 else 0.0
 
-        # Stock by category
-        categories = {}
-        total_stock_count = sum(p.current_stock for p in products)
-        for p in products:
-            categories[p.category] = categories.get(p.category, 0) + p.current_stock
+        # Stock by category (Optimized aggregation)
+        category_query = db.query(
+            Product.category,
+            func.sum(Product.current_stock).label('val')
+        ).group_by(Product.category).order_by(desc('val')).all()
             
         stock_by_category = [
             CategoryData(
@@ -100,7 +105,7 @@ class AnalyticsService:
                 value=val,
                 percentage=(val / total_stock_count * 100) if total_stock_count > 0 else 0.0
             )
-            for cat, val in sorted(categories.items(), key=lambda x: x[1], reverse=True)
+            for cat, val in category_query
         ]
 
         return InventoryMetrics(
@@ -115,36 +120,32 @@ class AnalyticsService:
 
     @staticmethod
     def get_sales_metrics(db: Session, days: int = 30) -> SalesMetrics:
-        """Get sales metrics"""
+        """Get sales metrics (Optimized)"""
         start_date = datetime.utcnow() - timedelta(days=days)
-        sales = db.query(Sale).options(joinedload(Sale.product)).filter(Sale.sale_date >= start_date).all()
         
-        total_sales_count = len(sales)
-        total_revenue = sum(s.total_amount for s in sales)
+        # 1. Broad aggregations
+        sales_stats = db.query(
+            func.count(Sale.id).label('count'),
+            func.sum(Sale.total_amount).label('rev')
+        ).filter(Sale.sale_date >= start_date).first()
+        
+        total_sales_count = sales_stats.count or 0
+        total_revenue = sales_stats.rev or 0.0
         average_order_value = total_revenue / total_sales_count if total_sales_count > 0 else 0.0
 
-        # Revenue growth
-        previous_period_start = start_date - timedelta(days=days)
-        previous_sales = db.query(Sale).filter(Sale.sale_date >= previous_period_start, Sale.sale_date < start_date).all()
-        previous_revenue = sum(s.total_amount for s in previous_sales)
-        revenue_growth = ((total_revenue - previous_revenue) / previous_revenue * 100) if previous_revenue > 0 else 0.0
+        # 2. Revenue growth (DB level)
+        prev_start = start_date - timedelta(days=days)
+        prev_revenue = db.query(func.sum(Sale.total_amount)).filter(
+            Sale.sale_date >= prev_start, 
+            Sale.sale_date < start_date
+        ).scalar() or 0.0
+        revenue_growth = ((total_revenue - prev_revenue) / prev_revenue * 100) if prev_revenue > 0 else 0.0
 
-        # Sales by day
-        sales_by_day_dict = {}
-        for s in sales:
-            date_key = s.sale_date.strftime('%Y-%m-%d')
-            sales_by_day_dict[date_key] = sales_by_day_dict.get(date_key, 0) + s.total_amount
-            
-        sales_by_day = [
-            TimeSeriesDataPoint(date=datetime.strptime(d, '%Y-%m-%d'), value=v)
-            for d, v in sorted(sales_by_day_dict.items())
-        ]
-
-        # Sales by category
-        category_sales = {}
-        for s in sales:
-            cat = s.product.category if s.product else "Uncategorized"
-            category_sales[cat] = category_sales.get(cat, 0) + s.total_amount
+        # 3. Sales by category (Direct Group By)
+        category_sales_query = db.query(
+            Product.category,
+            func.sum(Sale.total_amount).label('val')
+        ).join(Sale).filter(Sale.sale_date >= start_date).group_by(Product.category).all()
             
         sales_by_category = [
             CategoryData(
@@ -152,30 +153,31 @@ class AnalyticsService:
                 value=val,
                 percentage=(val / total_revenue * 100) if total_revenue > 0 else 0.0
             )
-            for cat, val in sorted(category_sales.items(), key=lambda x: x[1], reverse=True)
+            for cat, val in category_sales_query
         ]
 
-        # Top products
-        product_sales = {}
-        for s in sales:
-            if s.product_id not in product_sales:
-                product_sales[s.product_id] = {
-                    "product_name": s.product.name if s.product else "Unknown",
-                    "sku": s.product.sku if s.product else "N/A",
-                    "quantity_sold": 0,
-                    "revenue": 0,
-                    "profit": 0
-                }
-            
-            stats = product_sales[s.product_id]
-            stats["quantity_sold"] += s.quantity
-            stats["revenue"] += s.total_amount
-            if s.product:
-                stats["profit"] += (s.unit_price - s.product.cost_price) * s.quantity
-                
-        top_products = [
-            TopProduct(product_id=pid, **stats)
-            for pid, stats in sorted(product_sales.items(), key=lambda x: x[1]["revenue"], reverse=True)[:10]
+        # 4. Top products (Optimized)
+        top_prod_query = db.query(
+            Sale.product_id,
+            Product.name.label('product_name'),
+            Product.sku.label('sku'),
+            func.sum(Sale.quantity).label('quantity_sold'),
+            func.sum(Sale.total_amount).label('revenue'),
+            func.sum((Sale.unit_price - Product.cost_price) * Sale.quantity).label('profit')
+        ).join(Product).filter(Sale.sale_date >= start_date).group_by(Sale.product_id, Product.name, Product.sku).order_by(desc('revenue')).limit(10).all()
+
+        top_products = [TopProduct(**row._asdict()) for row in top_prod_query]
+
+        # 5. Time series (Date aggregation)
+        # Note: SQLite date formatting. In production with Postgres/MySQL use appropriate date trunc.
+        sales_by_day_query = db.query(
+            func.date(Sale.sale_date).label('day'),
+            func.sum(Sale.total_amount).label('val')
+        ).filter(Sale.sale_date >= start_date).group_by('day').order_by('day').all()
+
+        sales_by_day = [
+            TimeSeriesDataPoint(date=datetime.strptime(row.day, '%Y-%m-%d'), value=row.val)
+            for row in sales_by_day_query
         ]
 
         return SalesMetrics(
@@ -190,24 +192,30 @@ class AnalyticsService:
 
     @staticmethod
     def get_financial_metrics(db: Session, months: int = 6) -> FinancialMetrics:
-        """Get financial metrics"""
+        """Get financial metrics (Optimized)"""
         start_date = datetime.utcnow() - timedelta(days=months * 30)
-        sales = db.query(Sale).options(joinedload(Sale.product)).filter(Sale.sale_date >= start_date).all()
+        
+        # 1. Broad aggregations
+        stats = db.query(
+            func.sum(Sale.total_amount).label('rev'),
+            func.sum(Sale.quantity * Product.cost_price).label('cost')
+        ).join(Product).filter(Sale.sale_date >= start_date).first()
 
-        total_revenue = sum(s.total_amount for s in sales)
-        total_cost = sum(s.quantity * s.product.cost_price for s in sales if s.product)
+        total_revenue = stats.rev or 0.0
+        total_cost = stats.cost or 0.0
         gross_profit = total_revenue - total_cost
         profit_margin = (gross_profit / total_revenue * 100) if total_revenue > 0 else 0.0
 
-        # Revenue by month
-        monthly_revenue = {}
-        for s in sales:
-            month_key = s.sale_date.strftime('%Y-%m-01')
-            monthly_revenue[month_key] = monthly_revenue.get(month_key, 0) + s.total_amount
+        # 2. Revenue by month (DB level)
+        # SQLite date format. For other DBs use appropriate trunc.
+        monthly_query = db.query(
+            func.strftime('%Y-%m-01', Sale.sale_date).label('month'),
+            func.sum(Sale.total_amount).label('val')
+        ).filter(Sale.sale_date >= start_date).group_by('month').order_by('month').all()
             
         revenue_by_month = [
             TimeSeriesDataPoint(date=datetime.strptime(m, '%Y-%m-%d'), value=v)
-            for m, v in sorted(monthly_revenue.items())
+            for m, v in monthly_query
         ]
 
         return FinancialMetrics(
