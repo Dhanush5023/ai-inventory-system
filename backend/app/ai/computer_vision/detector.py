@@ -14,20 +14,30 @@ class StockVisionDetector:
     """Computer Vision service for automated stock counting using YOLOv8"""
     
     def __init__(self, model_name: str = "yolov8n.pt"):
-        # Load pre-trained nano model (will download on first run)
+        self.model_name = model_name
+        self._model = None
+
+    @property
+    def model(self):
+        """Lazy load the YOLO model"""
+        if self._model is not None:
+            return self._model
+            
         if not ULTRALYTICS_AVAILABLE:
-            self.model = None
-            return
+            return None
             
         try:
-            self.model = YOLO(model_name)
+            print(f"[INFO] Loading CV model: {self.model_name}...")
+            self._model = YOLO(self.model_name)
+            return self._model
         except Exception as e:
             print(f"CV Model Error: {e}")
-            self.model = None
+            return None
 
     def detect_stock(self, image_path: str) -> Dict[str, Any]:
         """Detect and count items in an image"""
-        if not self.model:
+        model = self.model
+        if not model:
             return {"error": "CV Model not initialized", "count": 0}
             
         if not os.path.exists(image_path):

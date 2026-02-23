@@ -20,15 +20,31 @@ class PredictionService:
     """Service for generating demand predictions"""
     
     def __init__(self, model_path: str = "./models"):
+        self.model_path = model_path
         self.predictor = DemandPredictor(model_path)
+        self._loaded = False
+        self.model_metrics = {}
+
+    def _ensure_loaded(self):
+        """Lazy load models and metrics"""
+        if self._loaded:
+            return
+            
+        print(f"[INFO] Loading prediction models from {self.model_path}...")
         self.predictor.load_models()
         
         # Load model metrics if available
         try:
-            metrics_file = os.path.join(model_path, 'model_metrics.pkl')
-            self.model_metrics = joblib.load(metrics_file)
-        except:
+            metrics_file = os.path.join(self.model_path, 'model_metrics.pkl')
+            if os.path.exists(metrics_file):
+                self.model_metrics = joblib.load(metrics_file)
+            else:
+                self.model_metrics = {}
+        except Exception as e:
+            print(f"[WARNING] Could not load model metrics: {e}")
             self.model_metrics = {}
+            
+        self._loaded = True
     
     def generate_predictions(self, db: Session, product_id: int, 
                            days_ahead: int = 30) -> List[Prediction]:
@@ -43,6 +59,7 @@ class PredictionService:
         Returns:
             List of Prediction objects
         """
+        self._ensure_loaded()
         # Get product
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
@@ -208,6 +225,7 @@ class PredictionService:
         Returns:
             Statistics about generated predictions
         """
+        self._ensure_loaded()
         products = db.query(Product).all()
         
         stats = {
@@ -246,6 +264,7 @@ class PredictionService:
         Returns:
             List of dictionaries with date, predicted_demand, confidence
         """
+        self._ensure_loaded()
         # Check if predictions exist
         existing_predictions = db.query(Prediction).filter(
             Prediction.product_id == product_id,
